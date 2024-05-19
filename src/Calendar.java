@@ -4,102 +4,76 @@ import com.google.gson.JsonObject;
 
 import java.time.LocalTime;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 
 public class Calendar {
     final private JsonObject working_hours;
-    final private JsonArray planned_meeting;
+    private JsonArray planned_meeting;
 
-    public Calendar(JsonObject workingHours, JsonArray plannedMeeting) {
-        working_hours = workingHours;
-        planned_meeting = plannedMeeting;
+    public Calendar(JsonObject working, JsonArray meetings) {
+        if (working == null || meetings == null) {
+            throw new IllegalArgumentException("Working hours or planned meetings cannot be null.");
+        }
+        this.working_hours = working;
+        this.planned_meeting = meetings;
     }
 
     public LocalTime getStartWorkTime() {
-        return LocalTime.parse(working_hours.get("start").getAsString());
+        return LocalTime.parse(this.working_hours.get("start").getAsString());
     }
 
     public LocalTime getEndWorkTime() {
-        JsonElement hourAsJsonElement = working_hours.get("end");
-        String hourAsString = hourAsJsonElement.getAsString();
-        return LocalTime.parse(hourAsString);
+        return LocalTime.parse(this.working_hours.get("end").getAsString());
     }
 
-    public List<LocalTime> getStartMeeting() {
-        List<LocalTime> starts = new ArrayList<>();
-        for(JsonElement hourAsJsonElement: planned_meeting) {
-            JsonObject hourAsJsonObject = hourAsJsonElement.getAsJsonObject();
-            String hourAsString = hourAsJsonObject.get("start").getAsString();
-            LocalTime hourAsTime = LocalTime.parse(hourAsString);
-            starts.add(hourAsTime);
+    public void sortMeetings() {
+        List<JsonElement> jsonElementList = new ArrayList<>();
+        for (JsonElement element : this.planned_meeting) {
+            jsonElementList.add(element);
         }
-        return starts;
+        jsonElementList.sort(Comparator.comparing(e -> e.getAsJsonObject().get("start").getAsString()));
+        JsonArray sortedMeetings = new JsonArray();
+        for (JsonElement element : jsonElementList) {
+            sortedMeetings.add(element);
+        }
+        this.planned_meeting = sortedMeetings;
     }
 
-    public List<LocalTime> getEndMeeting() {
-        List<LocalTime> ends = new ArrayList<>();
-        for(JsonElement hourAsJsonElement: planned_meeting) {
-            JsonObject hourAsJsonObject = hourAsJsonElement.getAsJsonObject();
-            String hourAsString = hourAsJsonObject.get("end").getAsString();
-            LocalTime hourAsTime = LocalTime.parse(hourAsString);
-            ends.add(hourAsTime);
-        }
-        return ends;
-    }
-//struktura danych z push uklada w srodku i sortuje
-    public List<List<LocalTime>> getFreeTime() {
-        List<List<LocalTime>> freeTimes = new ArrayList<>();
+    public List<Interval> getFreeTime() {
+        List<Interval> freeTimes = new ArrayList<>();
         LocalTime endWork = getEndWorkTime();
         LocalTime currentHour = getStartWorkTime();
-        for(JsonElement meetingAsJsonElement: planned_meeting) {
-            JsonObject meetingAsJsonObject = meetingAsJsonElement.getAsJsonObject();
-            String hourAsString = meetingAsJsonObject.get("start").getAsString();
-            LocalTime hourAsTime = LocalTime.parse(hourAsString);
+        this.sortMeetings();
+        for(JsonElement interval: this.planned_meeting) {
+            LocalTime hourAsTime = LocalTime.parse(interval.getAsJsonObject().get("start").getAsString());
             if(currentHour.isBefore(hourAsTime)) {
-                List<LocalTime> f_time= new ArrayList<>();
-                f_time.add(currentHour);
-                f_time.add(hourAsTime);
-                freeTimes.add(f_time);
+                freeTimes.add(new Interval(currentHour, hourAsTime));
             }
-            String endHour = meetingAsJsonObject.get("end").getAsString();
-            currentHour = LocalTime.parse(endHour);
+            currentHour = LocalTime.parse(interval.getAsJsonObject().get("end").getAsString());
         }
         if(currentHour.isBefore(endWork)) {
-            List<LocalTime> f_time= new ArrayList<>();
-            f_time.add(currentHour);
-            f_time.add(endWork);
-            freeTimes.add(f_time);
+            freeTimes.add(new Interval(currentHour, endWork));
         }
-        System.out.print(freeTimes);
         return freeTimes;
     }
 
-    public List<List<LocalTime>> getPossibleMeetings(Calendar c, int duration) {
-        List<List<LocalTime>> freeTimes = getFreeTime();
-        List<List<LocalTime>> freeTimes2 = c.getFreeTime();
-        List<List<LocalTime>> possibleMeetings = new ArrayList<>();
-        for(List<LocalTime> freeTime: freeTimes) {
-            for(List<LocalTime> freeTime2: freeTimes2) {
-                if (freeTime2.getFirst().isAfter(freeTime.getLast())) {
-                    continue;
-                }
-                if (freeTime.getFirst().isBefore(freeTime2.getFirst()) && !freeTime.getLast().isBefore(freeTime2.getFirst().plusMinutes(duration)))
-                {
-                    List<LocalTime> potentialMeeting = new ArrayList<>();
-                    potentialMeeting.add(freeTime2.getFirst());
-                    potentialMeeting.add(freeTime.getLast());
-                    possibleMeetings.add(potentialMeeting);
-                }
-                if (freeTime2.getFirst().isBefore(freeTime.getFirst()) && !freeTime2.getLast().isBefore(freeTime.getFirst().plusMinutes(duration)))
-                {
-                    List<LocalTime> potentialMeeting2 = new ArrayList<>();
-                    potentialMeeting2.add(freeTime.getFirst());
-                    potentialMeeting2.add(freeTime2.getLast());
-                    possibleMeetings.add(potentialMeeting2);
+    public List<Interval> getPossibleMeetings(Calendar c, Duration duration) {
+        List<Interval> freeTimes = getFreeTime();
+        List<Interval> freeTimes2 = c.getFreeTime();
+        List<Interval> possibleMeetings = new ArrayList<>();
+        for(Interval freeTime: freeTimes) {
+            for(Interval freeTime2: freeTimes2) {
+                if (!freeTime2.getBegin().isAfter(freeTime.getEnd()) &&
+                        !freeTime.getBegin().isAfter(freeTime2.getEnd())) {
+                    LocalTime maxBegin = freeTime.getBegin().isAfter(freeTime2.getBegin()) ? freeTime.getBegin() : freeTime2.getBegin();
+                    LocalTime minEnd = freeTime.getEnd().isBefore(freeTime2.getEnd()) ? freeTime.getEnd() : freeTime2.getEnd();
+                    if(!minEnd.isBefore(maxBegin.plusMinutes(duration.getMinutes()))) {
+                        possibleMeetings.add(new Interval(maxBegin, minEnd));
+                    }
                 }
             }
         }
-        System.out.print(possibleMeetings);
         return possibleMeetings;
     }
 }
