@@ -1,6 +1,4 @@
 # Spotkajmy się
-## Biblioteki zewnętrzne:
-gson - do odczytywania danych w formacie JSON
 
 ## Instalacja
 
@@ -26,3 +24,6 @@ Program przyjmuje na wejściu:
 Przykładowe dane znajdują się w pliku JsonData
 
 Wynikiem programu są zakresy, w których można organizować spotkania (o długości niemniejszej niż podany czas spotkania)
+
+## Biblioteki zewnętrzne:
+gson - do odczytywania danych w formacie JSON
